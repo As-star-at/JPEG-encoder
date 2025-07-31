@@ -21,6 +21,12 @@ The following steps have been implemented in the JPEG encoder pipeline, which ta
 - Huffman Coding
 
 ## HOW TO USE THIS PROJECT IN GOOGLE COLAB
+
+### INITIAL STEPS
+- In a new notebook in Google Colab, paste the code in /src/main_code.cu
+- At the top, wirte the following magic command: %%writefile jpeg.cu
+- Save the image to be compressed in /content on Colab
+  
 ### INSTALL REQUIRED DEPENDENCIES
 This project requires updating package list and installation of OpenCV. Paste the following commands in a cell in Google Colab:<br><br>
 ```bash
