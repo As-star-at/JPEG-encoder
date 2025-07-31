@@ -19,3 +19,9 @@ The following steps have been implemented in the JPEG encoder pipeline, which ta
 - Zig-zag scanning
 - Run-length Encoding
 - Huffman Coding
+
+## HOW TO USE THIS PROJECT IN GOOGLE COLAB
+
+## PROJECT STRUCTURE
+- /Notebooks: Contains detailed documentation and example result
+- /src: Contains the main code
