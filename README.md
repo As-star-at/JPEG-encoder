@@ -1,5 +1,5 @@
 # IMAGE ENCODER USING PARALLEL PROGRAMMING
-INTRODUCTION
+__INTRODUCTION__<br>
 This project implements a custom JPEG image encoder, leveraging the power of parallel programming
 using CUDA and OpenCV, with the core logic written in C++. The aim is to demonstrate the efficiency
 and benefits of parallel computing in handling computationally intensive tasks like image encoding by
