@@ -469,7 +469,12 @@ public:
 };
 
 int main(){
-    string original_img= "tree.png";
+    string img_path;
+    cout<<"Enter the path to image: ";
+    cin>> img_path;
+
+    string original_img= img_path;
+
     //img is basically the matrix on which our image is stored. No need to allocate extra memory for host input data.
     cv::Mat img= cv::imread(original_img);
     cv::Mat img_rgb;
