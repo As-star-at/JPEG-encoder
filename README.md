@@ -22,18 +22,18 @@ The following steps have been implemented in the JPEG encoder pipeline, which ta
 
 ## HOW TO USE THIS PROJECT IN GOOGLE COLAB
 ### INSTALL REQUIRED DEPENDENCIES
-This project requires updating package list and installation of OpenCV. Paste the following commands in a cell in Google Colab:<br>
-!apt-get update
+This project requires updating package list and installation of OpenCV. Paste the following commands in a cell in Google Colab:<br><br>
+!apt-get update<br>
 !apt-get install -y libopencv-dev pkg-config
 
 ### COMPILE CUDA CODE
-Once the dependencies have been installed, the next step is to compile the code to generate an executable file. This is done by nvcc (NVIDIA CUDA Compiler) using the following commands. Paste them in a separate cell in Google COlab notebook:<br>
-OPENCV_CFLAGS = !pkg-config --cflags opencv4
-OPENCV_LIBS = !pkg-config --libs opencv4
+Once the dependencies have been installed, the next step is to compile the code to generate an executable file. This is done by nvcc (NVIDIA CUDA Compiler) using the following commands. Paste them in a separate cell in Google Colab notebook:<br><br>
+OPENCV_CFLAGS = !pkg-config --cflags opencv4 <br>
+OPENCV_LIBS = !pkg-config --libs opencv4 <br>
 !nvcc -o jpeg_converter jpeg.cu {OPENCV_CFLAGS[0]} {OPENCV_LIBS[0]} -arch=sm_75
 
 ### RUN THE ENCODER
-The following command runs the jpeg_converter executable. It prints the step-by-step results of each stage of the pipeline, and produce a compressed JPEG output:<br>
+The following command runs the jpeg_converter executable. It prints the step-by-step results of each stage of the pipeline, and produce a compressed JPEG output:<br><br>
 !./jpeg_converter
 
 ## PROJECT STRUCTURE
