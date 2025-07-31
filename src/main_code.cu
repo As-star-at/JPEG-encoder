@@ -43,12 +43,15 @@ void check(cudaError_t err){
     }
     return;
 }
+
+//Function to measure time for CPU execution only.
 double cpu_sec(){
     struct timeval tp;
     gettimeofday(&tp, NULL);
     return (double(tp.tv_sec + tp.tv_usec*1.0E-06));
 }
 
+//Device side function for colour space conversion from RGB to YCrCb.
 __global__ void rgb_to_ycbcr(rgb* d_rgb, ycbcr* d_ycbcr, int height, int width){
     int i= blockDim.y * blockIdx.y + threadIdx.y; //row
     int j= blockDim.x * blockIdx.x + threadIdx.x; //col
@@ -66,6 +69,7 @@ __global__ void rgb_to_ycbcr(rgb* d_rgb, ycbcr* d_ycbcr, int height, int width){
     d_ycbcr[index]= ycbcr_pixel;
 }
 
+//Device side kernel for downsamoling
 __global__ void downsample(ycbcr* d_ycbcr, ycbcr* d_ycbcr_downsampled, int height, int width){
     int i= blockDim.y * blockIdx.y + threadIdx.y;
     int j= blockDim.x * blockIdx.x + threadIdx.x;
@@ -103,11 +107,13 @@ __global__ void downsample(ycbcr* d_ycbcr, ycbcr* d_ycbcr_downsampled, int heigh
     d_ycbcr_downsampled[index].cb= avg_cb;
 }
 
+//Helper function for the DCT kernel. Runs only on the GPU.
 __device__ float alpha(int a){
     if(a==0){return (float)(1.0f/sqrtf(2.0f));}
     else return 1.0f;
 }
 
+//DCT kernel
 __global__ void dct(const ycbcr* d_ycbcr_downsampled, float* d_dct_y, float* d_dct_cr, float* d_dct_cb, int height, int width){
     const float PI = 3.14159265358979323846f;
     int block_start_y= blockDim.y * blockIdx.y;
@@ -125,6 +131,7 @@ __global__ void dct(const ycbcr* d_ycbcr_downsampled, float* d_dct_y, float* d_d
     int global_x= block_start_x + local_x;
     int global_y= block_start_y + local_y;
 
+    //Level shifting
     if(global_x < width && global_y < height){
         level_y[local_y][local_x]= (float)(d_ycbcr_downsampled[global_y*width + global_x].y) -128.0f;
         level_cr[local_y][local_x]= (float)(d_ycbcr_downsampled[global_y*width + global_x].cr) -128.0f;
@@ -159,6 +166,13 @@ __global__ void dct(const ycbcr* d_ycbcr_downsampled, float* d_dct_y, float* d_d
     }
 }
 
+//Helper function for sequential DCT
+float alpha_cpu(int a){
+    if(a==0){return (float)(1.0f/sqrtf(2.0f));}
+    else return 1.0f;
+}
+
+//Function used for sequentially executing DCT using OpenCV built-in functions
 void sequential_dct_opencv(const cv::Mat& h_ycbcr_downsampled_mat, float* h_dct_y, float* h_dct_cr, float* h_dct_cb, int height, int width) {
     // Ensure the input matrix is 3-channel for YCbCr
     if (h_ycbcr_downsampled_mat.channels() != 3) {
@@ -220,11 +234,7 @@ void sequential_dct_opencv(const cv::Mat& h_ycbcr_downsampled_mat, float* h_dct_
     }
 }
 
-float alpha_cpu(int a){
-    if(a==0){return (float)(1.0f/sqrtf(2.0f));}
-    else return 1.0f;
-}
-
+//Normal sequential DCT function
 void sequential_dct(const ycbcr* h_ycbcr_downsampled, float* h_dct_y, float* h_dct_cr, float* h_dct_cb, int height, int width){
     const float PI = 3.14159265358979323846f;
     const float normalize = 0.25f;
@@ -287,6 +297,7 @@ void sequential_dct(const ycbcr* h_ycbcr_downsampled, float* h_dct_y, float* h_d
     }
 }
 
+//Quantization kernel
 __global__ void quantization(int* q_y, int* q_cr, int* q_cb, float* d_dct_y, float* d_dct_cr, float* d_dct_cb, int height, int width){
     //This table is for Y components
     const unsigned char qtable_Y[64] = {
@@ -331,6 +342,7 @@ __global__ void quantization(int* q_y, int* q_cr, int* q_cb, float* d_dct_y, flo
     }
 }
 
+//Encoding- zig zag scan
 __global__ void zig_zag_scan(int* zz_scanned_y, int* zz_scanned_cr, int* zz_scanned_cb, int* q_y, int* q_cr, int* q_cb, int height, int width){
     int block_start_x= blockIdx.x * blockDim.x;
     int block_start_y= blockIdx.y * blockDim.y;
@@ -371,6 +383,7 @@ __global__ void zig_zag_scan(int* zz_scanned_y, int* zz_scanned_cr, int* zz_scan
     zz_scanned_cb[output_base_idx + local_thread_id]= zz_cb[a][b];
 }
 
+//For RLE to return the size of code for a non-zero value. Based on the binary values of numbers.
 int get_code_bits(int value){
     if (value == 0) return 0; // Category 0 for value 0
     int abs_val = std::abs(value);
@@ -389,6 +402,7 @@ int get_code_bits(int value){
     return size;
 }
 
+//Function to build the huffman table
 std::map<unsigned char, std::pair<unsigned short, unsigned char>> build_huffman_table(
     const unsigned char* bits, const unsigned char* huffval) {
     std::map<unsigned char, std::pair<unsigned short, unsigned char>> huff_table;
@@ -417,7 +431,7 @@ unsigned short get_value_bits(int value, int size) {
     }
 }
 
-//bitstream writer class
+//bitstream writer class- used for Huffman coding
 class BitStreamWriter {
 public:
     std::vector<unsigned char> data;
@@ -455,30 +469,13 @@ public:
 };
 
 int main(){
-    //string original_img= "tree.png";
-    ////img is basically the matrix on which our image is stored. No need to allocate extra memory for host input data.
-    //cv::Mat img= cv::imread(original_img);
-    //cv::Mat img_rgb;
-    //cv::cvtColor(img, img_rgb, cv::COLOR_BGR2RGB); //by default image will be read in BGR format. Need to convert it to RGB format.
-    //if(img.empty()){cout<<"Couldn't open image\n"; return 1;}
-    //if(img.type() != CV_8UC3){cout<<"Image must be 8-bit, 3 channel type\n"; return 1;}
-
-    cv::Mat img_rgb(8, 8, CV_8UC3);
-    // Create a gradient, for example, varying the Red component across columns
-    // and Green component across rows, keeping Blue constant.
-    for (int i = 0; i < img_rgb.rows; ++i) {
-        for (int j = 0; j < img_rgb.cols; ++j) {
-            unsigned char r_val = static_cast<unsigned char>(j * 255 / (img_rgb.cols - 1)); // Gradient across columns
-            unsigned char g_val = static_cast<unsigned char>(i * 255 / (img_rgb.rows - 1)); // Gradient across rows
-            unsigned char b_val = 128; // Constant blue component
-            img_rgb.at<cv::Vec3b>(i, j) = {b_val, g_val, r_val}; // OpenCV uses BGR by default
-        }
-    }
-    // You can save this initial image to verify it looks like a gradient
-    cv::imwrite("Gradient_Input.jpg", img_rgb);
-
-    if(img_rgb.empty()){cout<<"Couldn't open image\n"; return 1;}
-    if(img_rgb.type() != CV_8UC3){cout<<"Image must be 8-bit, 3 channel type\n"; return 1;}
+    string original_img= "tree.png";
+    //img is basically the matrix on which our image is stored. No need to allocate extra memory for host input data.
+    cv::Mat img= cv::imread(original_img);
+    cv::Mat img_rgb;
+    cv::cvtColor(img, img_rgb, cv::COLOR_BGR2RGB); //by default image will be read in BGR format. Need to convert it to RGB format.
+    if(img.empty()){cout<<"Couldn't open image\n"; return 1;}
+    if(img.type() != CV_8UC3){cout<<"Image must be 8-bit, 3 channel type\n"; return 1;}    
 
     //Events creation for CUDA timing
     cudaEvent_t start, stop;
@@ -518,6 +515,7 @@ int main(){
     cout<<"Time taken for colour space conversion: "<< g_colour_conv<<" ms\n";
 
     check(cudaMemcpy(h_ycbcr_custom.data, d_ycbcr, ycbcr_bytes, cudaMemcpyDeviceToHost));
+    //Printing the partial results for a given input
     cout << "\n--- YCbCr Conversion (First 8x8 Block) ---\n";
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
@@ -531,10 +529,9 @@ int main(){
         }
         cout << endl;
     }
-    //###
 
     //Step-2: Down sampling- Using average method
-    //d_ycbcr contains the image data after converting from RGB->YCrCb format on the device itself. We haven't deleted that yet, so maybe it can be reused for this operation.
+    //d_ycbcr contains the image data after converting from RGB->YCrCb format on the device itself. We haven't deleted that yet from the GPU memory, so it can be reused for this operation.
     cv::Mat h_ycbcr_downsampled(height, width, CV_8UC3);
     ycbcr* d_ycbcr_downsampled;
     check(cudaMalloc((void**) &d_ycbcr_downsampled, ycbcr_bytes));
@@ -548,14 +545,14 @@ int main(){
     cout<<"Time for downsampling: "<<g_downsample<<" ms \n";
     
     check(cudaMemcpy(h_ycbcr_downsampled.data, d_ycbcr_downsampled, ycbcr_bytes, cudaMemcpyDeviceToHost));
+    //saved the downsampled image.
     cv::imwrite("Downsampled.jpg", h_ycbcr_downsampled);
 
+    //Printing partial results
     cout << "\n--- Downsampling (First 8x8 Block) ---\n";
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
             int index = i * width + j;
-            // Assuming h_ycbcr_downsampled.data directly contains interleaved Y, Cb, Cr bytes
-            // If you used h_ycbcr_downsampled (cv::Mat), then access with .at<cv::Vec3b>(i,j)
             unsigned char y_val = h_ycbcr_downsampled.data[index * 3];
             unsigned char cb_val = h_ycbcr_downsampled.data[index * 3 + 1];
             unsigned char cr_val = h_ycbcr_downsampled.data[index * 3 + 2];
@@ -599,6 +596,7 @@ int main(){
     check(cudaMemcpy(h_dct_cr, d_dct_cr, dct_bytes, cudaMemcpyDeviceToHost));
     check(cudaMemcpy(h_dct_cb, d_dct_cb, dct_bytes, cudaMemcpyDeviceToHost));
 
+    //Printing results for the top left block of the image- each for Y, Cr and Cb components
     cout << "\n--- DCT Coefficients (First 8x8 Block - Y Component) ---\n";
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
@@ -685,6 +683,7 @@ int main(){
     check(cudaMemcpy(h_q_cr, q_cr, qbytes, cudaMemcpyDeviceToHost));
     check(cudaMemcpy(h_q_cb, q_cb, qbytes, cudaMemcpyDeviceToHost));
 
+    //Print results for top left block of the image
     cout << "\n--- Quantized Coefficients (First 8x8 Block - Y Component) ---\n";
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j) {
@@ -711,17 +710,13 @@ int main(){
         }
         cout << endl;
     }
-
-    // Don't forget to free the host memory allocated for quantized results
-    free(h_q_y);
-    free(h_q_cr);
-    free(h_q_cb);
     
     //Step-5: Encoding
     //Step 5-a: Zig-zag scan of matrix in 8*8 blocks.
+
     int num_blocks_x = (width + 7) / 8;
     int num_blocks_y = (height + 7) / 8;
-    size_t total_elements_scanned = num_blocks_x * num_blocks_y * 64; // Each block has 64 elements
+    size_t total_elements_scanned = num_blocks_x * num_blocks_y * 64; // Each block has 64 elements (8*8)
     size_t zz_bytes = total_elements_scanned * sizeof(int);
     dim3 zz_block(8, 8);
     int zz_gx= (width + 7)/8;
@@ -740,8 +735,6 @@ int main(){
     cudaEventElapsedTime(&g_zz_scan, start, stop);
     cout<<"Time taken for quantization: "<<g_zz_scan<<" ms \n";
 
-    
-
     //From this point, there will be no GPU implementation. The following code runs better on the CPU.
     //Step 5-b: RLE
     int* h_zz_y, *h_zz_cr, *h_zz_cb;
@@ -754,6 +747,7 @@ int main(){
     check(cudaMemcpy(h_zz_cr, zz_scanned_cr, zz_bytes, cudaMemcpyDeviceToHost));
     check(cudaMemcpy(h_zz_cb, zz_scanned_cb, zz_bytes, cudaMemcpyDeviceToHost));
 
+    //Print results for top-left block of the image
     cout << "\n--- Zig-Zag Scanned Coefficients (First Block - Y Component) ---\n";
     for (int i = 0; i < 64; ++i) {
         cout << h_zz_y[i] << " ";
@@ -882,6 +876,7 @@ int main(){
 
     // Add this after: cout<<"Time for RLE: "<<rle_end-rle_start<<" sec\n";
 
+    //Printing partial results
     cout << "\n--- RLE Encoded Symbols (First Block - Y Component) ---\n";
     // Print the DC coefficient of the first block
     if (!encoded_y_symbols.empty()) {
@@ -889,7 +884,7 @@ int main(){
              << ", size: " << encoded_y_symbols[0].size
              << ", value: " << encoded_y_symbols[0].value << "}\n";
     }
-    // Print a few AC coefficients for the first block
+    // Printing a few AC coefficients for the first block
     cout << "AC (Y) - first few:\n";
     int count_ac_y = 0;
     for (size_t i = 1; i < encoded_y_symbols.size() && count_ac_y < 10; ++i) { // Print up to 10 AC symbols
@@ -954,7 +949,7 @@ int main(){
     // HUFFVAL array: lists the symbols that are being encoded.
     const unsigned char DC_L_HUFFVAL[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-    // AC Luminance (Y) Huffman Table
+    // AC Luminance (Y) Huffman Table (Predefined)
     const unsigned char AC_L_BITS[] = {0, 0, 2, 1, 3, 3, 2, 4, 3, 5, 4, 4, 0, 0, 1, 125, 0};
     const unsigned char AC_L_HUFFVAL[] = {
         0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12,
@@ -984,7 +979,7 @@ int main(){
     const unsigned char DC_C_BITS[] = {0, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0};
     const unsigned char DC_C_HUFFVAL[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-    // AC Chrominance (Cr/Cb) Huffman Table
+    // AC Chrominance (Cr/Cb) Huffman Table (Predefined)
     const unsigned char AC_C_BITS[] = {0, 0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 119};
     const unsigned char AC_C_HUFFVAL[] = {
         0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21,
@@ -1009,7 +1004,7 @@ int main(){
         0xEA, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8,
         0xF9, 0xFA
     };
-// Build Huffman Tables
+// Building Huffman Tables
     std::map<unsigned char, std::pair<unsigned short, unsigned char>> dc_l_huff_table = build_huffman_table(DC_L_BITS, DC_L_HUFFVAL);
     std::map<unsigned char, std::pair<unsigned short, unsigned char>> ac_l_huff_table = build_huffman_table(AC_L_BITS, AC_L_HUFFVAL);
     std::map<unsigned char, std::pair<unsigned short, unsigned char>> dc_c_huff_table = build_huffman_table(DC_C_BITS, DC_C_HUFFVAL);
@@ -1127,84 +1122,7 @@ int main(){
     cudaFree(q_cb); cudaFree(q_cr); cudaFree(q_y);
     cudaFree(zz_scanned_y); cudaFree(zz_scanned_cr); cudaFree(zz_scanned_cb);
     free(h_zz_y); free(h_zz_cr); free(h_zz_cb);
-    free(h_dct_y);
-    free(h_dct_cr);
-    free(h_dct_cb);
+    free(h_dct_y); free(h_dct_cr); free(h_dct_cb);
+    free(h_q_y); free(h_q_cr); free(h_q_cb);
     return 0;
 }
-
-/*
-This simple function can be used for getting the time of the day and by subtracting the end time-start time we can obtain the total time it took to execute a program. But it is not very accurate as it measures time using CPU clock cycles. The CPU is forced to wait till all threads complete exec and this means in the measured time, it may include CPU overheads. This can over/under estimate the time.
-double cpu_sec(){
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    return (double(tp.tv_sec + tp.tv_usec*1.0E-6));
-}
-Instead, use CudaEventRecord()-- more accurate measurement for GPU tasks
-Can use custom fn for CPU tasks like huffman and RLE.
-
-Best way to manage memory in this case: Use openCV's cv::Mat for host side memory management. Use cudaMalloc for device side management
-
-.data has something to do with the buffers. img.data[i] has the data of the ith element of the image array.
-An image is stored as a row major matrix (array), ex: [Y][Cr][Cb][Y][Cr][Cb]...
-first 3 values for the 1st pixel, then for the 2nd and so on (interleaved).
-So printing (int) img.data[0] will print the raw value of Y component of the 1st pixel.
-
-###
-//we can also extract the individual components-- like in the below lines, extracted only the luminance values of the YCbCr image-- which gives us the greyscale image!
-    cv::Mat y_ycbcr_custom(height, width, CV_8UC1);
-    for(int i=0; i<height*width; i++){
-      y_ycbcr_custom.data[i]= h_ycbcr_custom.data[i*3];
-    }
-    cv::imwrite("y_ycbcr_custom.jpg", y_ycbcr_custom);
-
-    //Do the same thing using the built in function cvtColor in openCV
-    cv::Mat h_ycbcr_builtin;
-    double f_start= cpu_sec();
-    cv::cvtColor(img, h_ycbcr_builtin, cv::COLOR_BGR2YCrCb);
-    double f_end= cpu_sec();
-    double f_time= f_end - f_start;
-    cv::imwrite("YCbCr_image_opencv_builtin_op.jpg", h_ycbcr_builtin);
-    cout<<"Saved file\n";
-
-Question: If size of image_YCrCb is 'x', is the size of image_Y_only 'x/3'? since YCbCr contains 3 components per pixel, but Y will contain only the luminance. so 1/3rd the size? -- Ans: No, it does not work that way
-
-Next stage: image downsampling.
-Main concern: For this step, we need 2*2 blocks of the img matrix, then reduce these to 1 by taking their avg.
-problem: Memory access will not be coalesced. Very inefficient.
-Idea-1: Instead of taking 2*2 samples, can't we take 4*1? 4 values in a row and averaged out? That way even menory accesses will be coalesced. (But this is not correct as JPEG format specifies 2*2 samples only)
-Idea-2: Use of nearest neighbour downsampling. can this help? --not quite.
-
-So move on with the original idea of average downsampling.
-Main problem with DCT: We forst need to shift level from 0-255 range to -128 t0 127 for calculation puroposes. But the pixel struct we have declared has members of type unsigned char, which can't take values in -ve. Need som machanism to deal with floating point values.
-second, need to deal with the block size. DCT only works on 8*8 sized matrices. So if the original matrix is divided into blocks of 8*8 in the beginning, this could lead to better perf for DCT kernel.
-
-More problems with DCT:
-1. It needs level shifting. Our range of pixel values is from 0-255 currently after downsampling. But need to shift it to -128->127. But all our pixel structs have unsigned char members. Which means they can't store -ve/float values. Need to change data type.
-2. Normally we take the inner dimension of a block as 32 as it provides the best performance. But in case of DCT, the algorithm naturally demands a block size of 8*8 (a it works on matrices of that size). So need to define new block and grid dimensions.
-3. Need to use shared memory here-- explore more.
-4. We need to apply 2D DCT. That is step-wise. First row wise and then column wise.
-5. DCT has to be applied component-wise. Y, Cr and Cb, that is. Don't forget our raw data contains [Y][Cr][Cb][Y][Cr][Cb]... this format. Need to handle that properly.
-
-MAJOR PROBLEM/AREA OF CONFUSION:
-I never understand the bound checking conditions.
-Memory and especially edge cases management, when the index can go out of bounds, and how to deal with it is such a pain.
-TRYING TO RESOLVE:
-There can be two different types of kernel ops in which we will need edge case handling:
-1. Pixel level ops (simple- like YCrCb conversion, Level shift etc, where each thread has its own global index and has to work with that only)
-2. Block level ops(like DCT here)-- this being different we can't use the same bounds check as (1) above. Need different mechanisms.
-
-So the main problem in DCT currently is handling indices (local, global, spatial indices, frequency indices and loop variables). Where to use what is difficult to understand.
-And the next problem is how to handle edge cases (where the calculated indices go out of range, and where and how to handle them).
-
-Quantization: Nothing special-> Just two pre defined, hardcoded matrices. Divide the obtained dct matrices with these. Main problem, once again, is to handle the indexing and memory in a block-level setting.
-
-Encoding:
-Consists of three substeps:
-A. Zig-zag scanning of individual 8*8 blocks in the matrix: Why is this done? After quant, majority of the values in the lower traingular half of the matrices becomes 0. In order to club them all together such that we can form the longest chains of subsequent 0's, we use the zig-zag scan.
-
-B. RLE: Run Length Encoding: Instead of encoding 15 zeroes (ex.) individually, we can encode the information (0, 15) meaning the char 0 appeared 15 times. But in JPEG, RLE is done a bit differently. We encode (# of preceding zeroes, first non-zero element after a string of zeroes). If we reach the end of a block, insert a marker called End of Block (EOB) marker. This marks the start of a new block. 
-In the book, the method of introducing EOB is considered inefficient. There is another method, but let's stick to EOB for now. We'll put the more efficient approach in future scope.
-
-C. Huffman encoding:
-*/
