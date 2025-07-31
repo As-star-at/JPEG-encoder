@@ -35,13 +35,10 @@ OPENCV_CFLAGS = !pkg-config --cflags opencv4
 OPENCV_LIBS = !pkg-config --libs opencv4
 !nvcc -o jpeg_converter jpeg.cu {OPENCV_CFLAGS[0]} {OPENCV_LIBS[0]} -arch=sm_75
 ```
+Note that -arch=sm_75 flag is specific to the T4 GPU on Colab. It may need changes depending on the GPU being used.
 
 ### RUN THE ENCODER
 The following command runs the jpeg_converter executable. It prints the step-by-step results of each stage of the pipeline, and produce a compressed JPEG output:<br>
 ```bash
 !./jpeg_converter
 ```
-
-## PROJECT STRUCTURE
-- /Notebooks: Contains detailed documentation and example result
-- /src: Contains the main code
