@@ -7,7 +7,7 @@ and performance improvements achieved through parallelization as compared to the
 ## FEATURES
 - Uses CUDA to parallelize portions of the JPEG encoder pipeline.
 - Basic image handling tasks have been done through OpenCV.
-- The language in which the code has been written in C++
+- The language in which the code has been written is CPP.
 
 ## JPEG PIPELINE
 The following steps have been implemented in the JPEG encoder pipeline, which takes an image input and produces a bitstream of compressed image characters as the output:
