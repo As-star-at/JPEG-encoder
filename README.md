@@ -27,8 +27,8 @@ The following steps have been implemented in the JPEG encoder pipeline, which ta
 - `/Notebook` : Contains the executable Google Colab notebook that serves as the project's main demonstration.
 
 ### INITIAL STEPS
-- In a new notebook in Google Colab, paste the code in /src/main_code.cu
-- At the top, wirte the following magic command: %%writefile jpeg.cu
+- In a new notebook in Google Colab, paste the code present in ```/src/main_code.cu```
+- At the top, wirte the following magic command: ```%%writefile jpeg.cu```
 - Save the image to be compressed in /content on Colab
   
 ### INSTALL REQUIRED DEPENDENCIES
