@@ -629,35 +629,6 @@ int main(){
         cout << endl;
     }
 
-    //DCT using sequential library function by OpenCV:
-    //float* h_dct_y_opencv = (float*)malloc(height * width * sizeof(float));
-    //float* h_dct_cr_opencv = (float*)malloc(height * width * sizeof(float));
-    //float* h_dct_cb_opencv = (float*)malloc(height * width * sizeof(float));
-//
-    //cv::Mat h_ycbcr_downsampled_mat(height, width, CV_8UC3); // 3 channels for Y, Cb, Cr
-//
-    //for(int i = 0; i < height; ++i) {
-    //    for(int j = 0; j < width; ++j) {
-    //        int index = i * width + j;
-    //        h_ycbcr_downsampled_mat.at<cv::Vec3b>(i, j) = cv::Vec3b(
-    //            h_ycbcr_downsampled[index].y,
-    //            h_ycbcr_downsampled[index].cb, // OpenCV typically uses BGR, so map YCbCr to BGR order if needed
-    //            h_ycbcr_downsampled[index].cr  // or explicitly handle channels if storing Y, Cb, Cr
-    //        );
-    //    }
-//
-    //}
-    //double dct_opencv_start = cpu_sec();
-    //sequential_dct_opencv(h_ycbcr_downsampled_mat, h_dct_y_opencv, h_dct_cr_opencv, h_dct_cb_opencv, height, width);
-    //double dct_opencv_end = cpu_sec();
-    //cout << "Time taken for Sequential DCT (OpenCV): " << (dct_opencv_end - dct_opencv_start) * 1000.0 << " ms\n";
-//
-    //// Now call the updated sequential_dct_opencv with the cv::Mat
-    //double dct_opencv_start = cpu_sec();
-    //sequential_dct_opencv(h_ycbcr_downsampled_mat, h_dct_y_opencv, h_dct_cr_opencv, h_dct_cb_opencv, height, width);
-    //double dct_opencv_end = cpu_sec();
-    //cout << "Time taken for Sequential DCT (OpenCV): " << (dct_opencv_end - dct_opencv_start) * 1000.0 << " ms\n";
-
     //step-4: quantization
     int* q_y, *q_cr, *q_cb;
     size_t qbytes= height * width * sizeof(int);
